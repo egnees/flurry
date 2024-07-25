@@ -24,10 +24,13 @@ pub(crate) struct SystemState {
     next_task_id: TaskId,
     tasks: HashMap<TaskId, Task>,
     /// Represents process which is owner
-    /// of the task, currently polling by [`Executor`]
-    /// or which's callback is called now.
+    /// of the currently executing task
+    /// or which's method ([`Process::on_local_message`] or [`Process::on_message`])
+    /// is called now.
     current_process: Option<ProcessId>,
     local_messages: HashMap<ProcessId, Vec<String>>,
+    trace: Vec<Event>,
+    time: f64,
 }
 
 #[derive(Clone)]
@@ -46,6 +49,24 @@ impl SystemHandle {
         self.0.upgrade().expect("system is not available")
     }
 
+    pub(crate) fn add_event_kind(&mut self, event_kind: EventKind) {
+        let this = self.upgrade();
+        let mut state = this.borrow_mut();
+        let time = state.time;
+        state.trace.push(Event {
+            time,
+            kind: event_kind,
+        });
+    }
+
+    pub(crate) fn inc_time(&mut self) {
+        self.upgrade().borrow_mut().time += 1.0;
+    }
+
+    pub(crate) fn get_trace(&self) -> Vec<Event> {
+        self.upgrade().borrow().trace.clone()
+    }
+
     pub(crate) fn send_local(&mut self, msg: String) {
         let this = self.upgrade();
         let mut state = this.borrow_mut();
@@ -53,11 +74,18 @@ impl SystemHandle {
             "trying to send local message, 
             but current process is not set",
         );
+
         state
             .local_messages
             .entry(proc)
             .or_insert(Vec::new())
-            .push(msg);
+            .push(msg.clone());
+
+        let time = state.time;
+        state.trace.push(Event {
+            time,
+            kind: EventKind::ProcLocalMessage(proc, msg),
+        });
     }
 
     pub(crate) fn schedule(&self, task_id: TaskId) {
@@ -87,8 +115,6 @@ impl SystemHandle {
 pub struct System {
     state: Rc<RefCell<SystemState>>,
     proc: Vec<Box<dyn Process>>,
-    trace: Vec<Event>,
-    time: f64,
 }
 
 impl System {
@@ -119,10 +145,8 @@ impl System {
         self.set_current_proc(to);
         self.install_handle();
 
-        self.trace.push(Event {
-            time: self.time,
-            kind: EventKind::LocalMessage(msg.to_string()),
-        });
+        self.handle()
+            .add_event_kind(EventKind::UserLocalMessage(to, msg.to_string()));
 
         self.proc
             .get_mut(to)
@@ -167,7 +191,7 @@ impl System {
             cnt += 1;
         }
 
-        self.time += 1.0;
+        self.handle().inc_time();
 
         cnt
     }
@@ -185,7 +209,7 @@ impl System {
             .collect()
     }
 
-    pub fn get_trace(&self) -> &Vec<Event> {
-        &self.trace
+    pub fn get_trace(&self) -> Vec<Event> {
+        self.handle().get_trace()
     }
 }

@@ -1,8 +1,11 @@
+use crate::ProcessId;
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub enum EventKind {
-    LocalMessage(String),
-    Message(u64, String),
-    Ack(u64),
+    ProcLocalMessage(ProcessId, String),
+    UserLocalMessage(ProcessId, String),
+    Message(ProcessId, ProcessId, u64, String),
+    Ack(ProcessId, ProcessId, u64),
 }
 
 #[derive(Debug, Clone)]
