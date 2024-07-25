@@ -11,7 +11,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let proc_cnt = 100;
+    let proc_cnt = 200;
     let messages = 10;
 
     let mut system = flurry::System::default();
@@ -29,7 +29,8 @@ fn main() {
 
     for msg in 1..=messages {
         let content = format!("message number {msg}");
-        system.send_local_message(rng.gen::<usize>() % proc_cnt, content.as_str());
+        let start_from = rng.gen::<usize>() % proc_cnt;
+        system.send_local_message(start_from, content.as_str());
 
         loop {
             let pending_events_cnt = system.get_pending_events_count();
@@ -49,6 +50,17 @@ fn main() {
         }
     }
 
+    let processed_tasks = system.get_processed_tasks();
+    let processed_events = system.get_processed_events_count();
+    let total_processed = processed_tasks + processed_events;
     let elapsed = now.elapsed();
+
+    println!("Processed tasks: {processed_tasks}");
+    println!("Processed events: {processed_events}");
+    println!("Total processed: {total_processed}");
     println!("Elapsed: {:.2?}", elapsed);
+    println!(
+        "Processed/s: {:.2}",
+        (total_processed as f64) / elapsed.as_secs_f64()
+    );
 }

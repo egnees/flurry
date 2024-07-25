@@ -36,6 +36,7 @@ pub(crate) struct SystemState {
     next_msg_id: MessageId,
     pending_events: Vec<EventKind>,
     waiting_ack: HashMap<MessageId, Weak<RefCell<SharedState<bool>>>>,
+    processed_events: usize,
 }
 
 #[derive(Clone)]
@@ -46,6 +47,10 @@ thread_local! {
 }
 
 impl SystemHandle {
+    pub(crate) fn get_processed_events_count(&self) -> usize {
+        self.upgrade().borrow().processed_events
+    }
+
     pub(crate) fn current() -> Self {
         SYSTEM_HANDLE.with(|h| h.borrow().as_ref().expect("no system available").clone())
     }
@@ -91,6 +96,7 @@ impl SystemHandle {
             time,
             kind: EventKind::ProcLocalMessage(proc, msg),
         });
+        state.processed_events += 1;
     }
 
     pub(crate) fn schedule(&self, task_id: TaskId) {
@@ -141,6 +147,8 @@ impl SystemHandle {
         state
             .pending_events
             .push(EventKind::MessageDelivered(from, to, msg_id, msg));
+
+        state.processed_events += 1;
 
         AckHandle { flag }
     }
@@ -198,6 +206,7 @@ impl SystemHandle {
 pub struct System {
     state: Rc<RefCell<SystemState>>,
     proc: Vec<Box<dyn Process>>,
+    processed_tasks: usize,
 }
 
 impl System {
@@ -260,10 +269,11 @@ impl System {
         if task.future().as_mut().poll(&mut ctx).is_pending() {
             self.state.borrow_mut().tasks.insert(task_id, task);
         }
+        self.processed_tasks += 1;
         true
     }
 
-    fn process_pending_tasks(&mut self) -> u64 {
+    fn process_pending_tasks(&mut self) -> usize {
         self.install_handle();
 
         let mut cnt = 0;
@@ -321,6 +331,15 @@ impl System {
                 }
                 _ => {}
             });
+
         self.process_pending_tasks();
+    }
+
+    pub fn get_processed_tasks(&self) -> usize {
+        self.processed_tasks
+    }
+
+    pub fn get_processed_events_count(&self) -> usize {
+        self.handle().get_processed_events_count()
     }
 }

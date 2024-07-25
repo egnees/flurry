@@ -12,7 +12,9 @@ impl flurry::Process for BroadcastProcess {
         }
         for to in self.others.iter() {
             if *to != from {
-                flurry::send(*to, msg.clone());
+                let to = *to;
+                let msg = msg.clone();
+                flurry::spawn(async move { flurry::send(to, msg).await });
             }
         }
         self.delivered.insert(msg.clone());
@@ -21,7 +23,9 @@ impl flurry::Process for BroadcastProcess {
 
     fn on_local_message(&mut self, msg: &str) {
         for to in self.others.iter() {
-            flurry::send(*to, msg.to_string());
+            let to = *to;
+            let msg = msg.to_string();
+            flurry::spawn(async move { flurry::send(to, msg).await });
         }
         self.delivered.insert(msg.to_string());
         flurry::send_local(msg.to_string());
