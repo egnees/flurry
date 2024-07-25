@@ -1,7 +1,7 @@
 struct SpawnProcess {}
 
 impl flurry::Process for SpawnProcess {
-    fn on_message(&mut self, _: flurry::ProcessId, _: &str) {
+    fn on_message(&mut self, _: flurry::ProcessId, _: String) {
         unreachable!()
     }
 
@@ -38,7 +38,7 @@ fn spawn() {
 struct ReorderSpawnProcess {}
 
 impl flurry::Process for ReorderSpawnProcess {
-    fn on_message(&mut self, _: flurry::ProcessId, _: &str) {
+    fn on_message(&mut self, _: flurry::ProcessId, _: String) {
         unreachable!()
     }
 

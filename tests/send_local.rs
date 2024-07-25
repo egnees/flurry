@@ -1,7 +1,7 @@
 struct SendLocalProcess {}
 
 impl flurry::Process for SendLocalProcess {
-    fn on_message(&mut self, _from: flurry::ProcessId, _msg: &str) {
+    fn on_message(&mut self, _from: flurry::ProcessId, _msg: String) {
         unreachable!()
     }
 
@@ -26,4 +26,16 @@ fn send_local() {
     assert_eq!(msgs[2], "msg3");
 
     assert!(system.read_local(proc).is_empty());
+
+    let trace = system.get_trace();
+    assert_eq!(trace.len(), 6);
+
+    assert_eq!(trace[0].time, 0.0);
+    assert_eq!(trace[1].time, 0.0);
+
+    assert_eq!(trace[2].time, 1.0);
+    assert_eq!(trace[3].time, 1.0);
+
+    assert_eq!(trace[4].time, 2.0);
+    assert_eq!(trace[5].time, 2.0);
 }

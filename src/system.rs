@@ -8,9 +8,11 @@ use std::{
 use futures::{task::waker, Future};
 
 use crate::{
-    event::{Event, EventKind},
+    ack::AckHandle,
+    event::{Event, EventKind, MessageId},
     join::JoinHandle,
     process::{Process, ProcessId},
+    shared::SharedState,
     task::{Task, TaskId},
     waker::Waker,
 };
@@ -31,6 +33,9 @@ pub(crate) struct SystemState {
     local_messages: HashMap<ProcessId, Vec<String>>,
     trace: Vec<Event>,
     time: f64,
+    next_msg_id: MessageId,
+    pending_events: Vec<EventKind>,
+    waiting_ack: HashMap<MessageId, Weak<RefCell<SharedState<bool>>>>,
 }
 
 #[derive(Clone)]
@@ -108,6 +113,84 @@ impl SystemHandle {
         state.tasks.insert(id, task);
         state.pending_tasks.push_back(id);
         handle
+    }
+
+    pub(crate) fn send(&mut self, to: ProcessId, msg: String) -> AckHandle {
+        let this = self.upgrade();
+        let mut state = this.borrow_mut();
+
+        let from = state.current_process.expect(
+            "trying to send message, 
+            but `current_process` is not set",
+        );
+
+        let flag = Rc::new(RefCell::new(SharedState::default()));
+        let flag_ref = Rc::downgrade(&flag);
+
+        let msg_id = state.next_msg_id;
+        state.next_msg_id += 1;
+        let old = state.waiting_ack.insert(msg_id, flag_ref);
+        assert!(old.is_none(), "duplicate message id: {msg_id}");
+
+        let time = state.time;
+        state.trace.push(Event {
+            time,
+            kind: EventKind::MessageSent(from, to, msg_id, msg.clone()),
+        });
+
+        state
+            .pending_events
+            .push(EventKind::MessageDelivered(from, to, msg_id, msg));
+
+        AckHandle { flag }
+    }
+
+    pub(crate) fn get_pending_events(&self) -> Vec<EventKind> {
+        self.upgrade().borrow().pending_events.clone()
+    }
+
+    pub(crate) fn get_pending_events_count(&self) -> usize {
+        self.upgrade().borrow().pending_events.len()
+    }
+
+    pub(crate) fn apply_pending_event(&self, event: usize) -> Option<EventKind> {
+        let this = self.upgrade();
+        let mut state = this.borrow_mut();
+
+        let event_kind = state.pending_events.remove(event);
+
+        let time = state.time;
+        state.trace.push(Event {
+            time,
+            kind: event_kind.clone(),
+        });
+
+        match event_kind {
+            EventKind::ProcLocalMessage(_, _)
+            | EventKind::UserLocalMessage(_, _)
+            | EventKind::MessageSent(_, _, _, _)
+            | EventKind::AckSent(_, _, _) => panic!("event can not be pending"),
+            EventKind::MessageDelivered(from, to, msg_id, _) => {
+                state.trace.push(Event {
+                    time,
+                    kind: EventKind::AckSent(to, from, msg_id),
+                });
+                state
+                    .pending_events
+                    .push(EventKind::AckDelivered(to, from, msg_id));
+            }
+            EventKind::AckDelivered(_, _, msg_id) => {
+                drop(state);
+                let waiter_ref = this.borrow_mut().waiting_ack.remove(&msg_id).expect(
+                    format!("ack waiter is not registered for message with id {msg_id}").as_str(),
+                );
+                waiter_ref
+                    .upgrade()
+                    .map(|waiter| waiter.borrow_mut().put(true));
+            }
+        }
+
+        return Some(event_kind);
     }
 }
 
@@ -198,7 +281,10 @@ impl System {
 
     pub fn read_local(&mut self, proc: ProcessId) -> Vec<String> {
         if self.proc.len() <= proc {
-            panic!("trying to read local message from process with incorrect id: {proc}");
+            panic!(
+                "trying to read local message 
+                from process with incorrect id: {proc}"
+            );
         }
         self.state
             .borrow_mut()
@@ -211,5 +297,30 @@ impl System {
 
     pub fn get_trace(&self) -> Vec<Event> {
         self.handle().get_trace()
+    }
+
+    pub fn get_pending_events(&self) -> Vec<EventKind> {
+        self.handle().get_pending_events()
+    }
+
+    pub fn get_pending_events_count(&self) -> usize {
+        self.handle().get_pending_events_count()
+    }
+
+    pub fn apply_pending_event(&mut self, event: usize) {
+        self.handle()
+            .apply_pending_event(event)
+            .map(|event| match event {
+                EventKind::MessageDelivered(from, to, _, msg) => {
+                    self.set_current_proc(to);
+
+                    self.proc
+                        .get_mut(to)
+                        .expect("invalid process id")
+                        .on_message(from, msg);
+                }
+                _ => {}
+            });
+        self.process_pending_tasks();
     }
 }
