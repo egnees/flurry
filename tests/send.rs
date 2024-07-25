@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use flurry::EventKind;
+
 struct SendProcess {
     sent_cnt: Rc<RefCell<usize>>,
     recv_cnt: usize,
@@ -49,10 +51,33 @@ fn send() {
 
     system.send_local_message(proc1, "some message");
     assert_eq!(system.get_pending_events_count(), 1);
-    assert_eq!(system.get_trace().len(), 2);
+    let trace = system.get_trace();
+    assert_eq!(trace.len(), 2);
+    assert_eq!(
+        trace[0].kind,
+        EventKind::UserLocalMessage(proc1, "some message".to_string())
+    );
+    assert_eq!(
+        trace[1].kind,
+        EventKind::MessageSent(proc1, proc2, 0, "some message".to_string())
+    );
 
     system.apply_pending_event(0);
-    assert_eq!(system.get_trace().len(), 6);
+    let trace = system.get_trace();
+    assert_eq!(trace.len(), 6);
+    assert_eq!(
+        trace[2].kind,
+        EventKind::MessageDelivered(proc1, proc2, 0, "some message".to_string())
+    );
+    assert_eq!(trace[3].kind, EventKind::AckSent(proc2, proc1, 0));
+    assert_eq!(
+        trace[4].kind,
+        EventKind::ProcLocalMessage(proc2, "received: 1".to_string())
+    );
+    assert_eq!(
+        trace[5].kind,
+        EventKind::MessageSent(proc2, proc1, 1, "some message".to_string())
+    );
 
     let proc2_local = system.read_local(proc2);
     assert_eq!(proc2_local.len(), 1);

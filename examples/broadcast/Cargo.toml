@@ -1,0 +1,13 @@
+[package]
+name = "chat-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flurry = { path = "../../" }
+rand = "0.8.5"
+
+
+[[bin]]
+name = "broadcast"
+path = "main.rs"
