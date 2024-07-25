@@ -132,7 +132,7 @@ impl System {
         self.process_pending_tasks();
     }
 
-    fn process_task(&mut self) -> bool {
+    fn process_pending_task(&mut self) -> bool {
         let (task_id, mut task) = {
             let mut state = self.state.borrow_mut();
             let Some(task_id) = state.pending_tasks.pop_front() else {
@@ -161,7 +161,7 @@ impl System {
 
         let mut cnt = 0;
         loop {
-            if !self.process_task() {
+            if !self.process_pending_task() {
                 break;
             }
             cnt += 1;

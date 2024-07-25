@@ -24,4 +24,6 @@ fn send_local() {
     assert_eq!(msgs[0], "msg1");
     assert_eq!(msgs[1], "msg2");
     assert_eq!(msgs[2], "msg3");
+
+    assert!(system.read_local(proc).is_empty());
 }

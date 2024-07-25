@@ -34,3 +34,37 @@ fn spawn() {
     assert_eq!(msgs[2], "spawn3");
     assert_eq!(msgs[3], "total_result: 6");
 }
+
+struct ReorderSpawnProcess {}
+
+impl flurry::Process for ReorderSpawnProcess {
+    fn on_message(&mut self, _: flurry::ProcessId, _: &str) {
+        unreachable!()
+    }
+
+    fn on_local_message(&mut self, _: &str) {
+        flurry::spawn(async move {
+            let handle = flurry::spawn(async move {
+                flurry::spawn(async move {
+                    flurry::send_local("send2".to_string());
+                })
+                .await;
+            });
+            flurry::send_local("send1".to_string());
+            handle.await;
+            flurry::send_local("send3".to_string());
+        });
+    }
+}
+
+#[test]
+fn reordered_spawns() {
+    let mut sys = flurry::System::default();
+    let proc = sys.add_process(ReorderSpawnProcess {});
+    sys.send_local_message(proc, "some msg");
+    let msgs = sys.read_local(proc);
+    assert_eq!(msgs.len(), 3);
+    assert_eq!(msgs[0], "send1");
+    assert_eq!(msgs[1], "send2");
+    assert_eq!(msgs[2], "send3");
+}
