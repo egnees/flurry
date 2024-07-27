@@ -5,9 +5,20 @@ edition = "2021"
 
 [dependencies]
 flurry = { path = "../../" }
+nix = "0.29.0"
 rand = "0.8.5"
 
 
 [[bin]]
-name = "broadcast"
-path = "main.rs"
+name = "benchmark"
+path = "benchmark.rs"
+
+
+[[bin]]
+name = "replay"
+path = "replay.rs"
+
+
+[[bin]]
+name = "fork"
+path = "fork.rs"
